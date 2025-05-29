@@ -5,6 +5,8 @@ import android.graphics.Color
 import android.graphics.Typeface
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.View.OnClickListener
@@ -13,9 +15,12 @@ import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Observer
 
-class QuizQuestionsActivity : AppCompatActivity(),  OnClickListener{
+class QuizQuestionsActivity : AppCompatActivity()//,OnClickListener{
+{
 
     private var mCurrentPosition : Int = 1
     private var mQuestionList : ArrayList<Question>? = null
@@ -34,6 +39,9 @@ class QuizQuestionsActivity : AppCompatActivity(),  OnClickListener{
     private var tvOptionThree : TextView? = null
     private var tvOptionFour : TextView? = null
     private var btnSubmit : Button? = null
+    private var selectedOptionIndex: Int? = null
+    private val quizViewModel: QuizViewModel by viewModels()
+    private lateinit var optionViews: List<TextView> // Tüm seçenekleri bir listede tutalım
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,38 +60,52 @@ class QuizQuestionsActivity : AppCompatActivity(),  OnClickListener{
         tvOptionFour = findViewById(R.id.tv_option_four)
         btnSubmit = findViewById(R.id.btnSubmit)
 
-        tvOptionOne?.setOnClickListener(this)
-        tvOptionTwo?.setOnClickListener(this)
-        tvOptionThree?.setOnClickListener(this)
-        tvOptionFour?.setOnClickListener(this)
-        btnSubmit?.setOnClickListener(this)
 
-
-        mQuestionList = Constants.getQuestions()
-
-        setQuestion()
-        defaultOptionsView()
-    }
-
-    private fun setQuestion() {
-        defaultOptionsView()
-        val question: Question = mQuestionList!![mCurrentPosition - 1]
-        ivImage?.setImageResource(question.image)
-        progressBar?.progress = mCurrentPosition
-        tvProgress?.text = "$mCurrentPosition/${progressBar?.max}"
-
-        tvQuestion?.text = question.question
-        tvOptionOne?.text = question.optionOne
-        tvOptionTwo?.text = question.optionTwo
-        tvOptionThree?.text = question.optionThree
-        tvOptionFour?.text = question.optionFour
-
-        if(mCurrentPosition == mQuestionList!!.size){
-            btnSubmit?.text = "FINISH"
-        }else{
-            btnSubmit?.text = "SUBMIT"
+        optionViews = listOf(
+            findViewById(R.id.tv_option_one),
+            findViewById(R.id.tv_option_two),
+            findViewById(R.id.tv_option_three),
+            findViewById(R.id.tv_option_four)
+        )
+        optionViews.forEachIndexed { index, textView ->
+            textView.setOnClickListener {
+                handleOptionClick(index)
+            }
         }
+
+        btnSubmit?.setOnClickListener {
+            checkAnswer()
+        }
+
+        observeViewModel()
     }
+
+
+    private fun observeViewModel() {
+        quizViewModel.currentQuestion.observe(this, Observer { question ->
+            question?.let {
+                tvQuestion?.text = it.question
+                tvOptionOne?.text = it.optionOne
+                tvOptionTwo?.text = it.optionTwo
+                tvOptionThree?.text = it.optionThree
+                tvOptionFour?.text = it.optionFour
+                ivImage?.setImageResource(it.image)
+                defaultOptionsView()
+            } ?: run {
+                // Quiz bitti
+                tvQuestion?.text = "Quiz Tamamlandı!" + "\n Final Skorunuz: \n ${quizViewModel.score.value}/${quizViewModel.questions.value?.size}"
+                tvOptionOne?.visibility = View.GONE
+                tvOptionTwo?.visibility = View.GONE
+                tvOptionThree?.visibility = View.GONE
+                tvOptionFour?.visibility = View.GONE
+                btnSubmit?.visibility = View.GONE
+                ivImage?.visibility = View.GONE
+            }
+        })
+        quizViewModel.score.observe(this, Observer { score -> findViewById<TextView>(R.id.tv_progress).text = "Skor: $score" })
+        quizViewModel.progress.observe(this,Observer{ progress -> findViewById<ProgressBar>(R.id.progressbar).progress = progress})
+    }
+
 
     private fun defaultOptionsView(){
         val options = ArrayList<TextView>()
@@ -104,121 +126,58 @@ class QuizQuestionsActivity : AppCompatActivity(),  OnClickListener{
         for (i in options){
             i.setTextColor(Color.parseColor("#7A8089"))
             i.typeface = Typeface.DEFAULT
-            i.background = ContextCompat.getDrawable(
-                this,
-                R.drawable.default_option_border_bg
-            )
-        }
-
-    }
-
-    fun selectedOptionView(tv: TextView, selectedOptionNum: Int){
-        defaultOptionsView()
-        mSelectedOptionPosition = selectedOptionNum
-
-        tv.setTextColor(Color.parseColor("#363A43"))
-        tv.setTypeface(tv.typeface, Typeface.BOLD)
-        tv.background = ContextCompat.getDrawable(
-            this,
-            R.drawable.selected_option_border_bg
-        )
-    }
-
-
-    override fun onClick(view: View?) {
-        when(view?.id){
-            R.id.tv_option_one -> {
-                tvOptionOne?.let{
-                    selectedOptionView(it,1)
-                }
-            }
-
-            R.id.tv_option_two -> {
-                tvOptionTwo?.let{
-                    selectedOptionView(it,2)
-                }
-            }
-
-            R.id.tv_option_three -> {
-                tvOptionThree?.let{
-                    selectedOptionView(it,3)
-                }
-            }
-
-            R.id.tv_option_four -> {
-                tvOptionFour?.let{
-                    selectedOptionView(it,4)
-                }
-            }
-
-            R.id.btnSubmit -> {
-                if(mSelectedOptionPosition == 0){
-                    mCurrentPosition++
-
-                    when{
-                        mCurrentPosition <= mQuestionList!!.size ->{
-                            setQuestion()
-                        }
-                        else -> {
-                            val intent = Intent(this,ResultActivity::class.java)
-                            intent.putExtra(Constants.USER_NAME, mUserName)
-                            intent.putExtra(Constants.CORRECT_ANSWERS, mCorrectAnswers)
-                            intent.putExtra(Constants.TOTAL_QUESTIONS, mQuestionList?.size)
-                            startActivity(intent)
-                            finish()
-                        }
-                    }
-                }else{
-                    val question = mQuestionList?.get(mCurrentPosition -1)
-                    if(question!!.correctAnswer!= mSelectedOptionPosition){
-                        answerView(mSelectedOptionPosition, R.drawable.wrong_option_border_bg)
-                    }else{
-                        mCorrectAnswers++
-                    }
-                    answerView(question.correctAnswer, R.drawable.correct_option_border_bg)
-
-                    if(mCurrentPosition == mQuestionList!!.size){
-                        btnSubmit?.text = "FINISH"
-                    }else{
-                        btnSubmit?.text = "GO TO NEXT QUESTION"
-                    }
-
-                    mSelectedOptionPosition = 0
-                }
-            }
-
-        }
-    }
-
-    private fun answerView(answer: Int, drawableView:Int){
-        when(answer){
-            1 -> {
-                tvOptionOne?.background = ContextCompat.getDrawable(
-                    this,
-                    drawableView
-                )
-            }
-            2 -> {
-                tvOptionTwo?.background = ContextCompat.getDrawable(
-                    this,
-                    drawableView
-                )
-            }
-            3 -> {
-                tvOptionThree?.background = ContextCompat.getDrawable(
-                    this,
-                    drawableView
-                )
-            }
-            4 -> {
-                tvOptionFour?.background = ContextCompat.getDrawable(
-                    this,
-                    drawableView
-                )
-            }
+            i.background = ContextCompat.getDrawable(this, R.drawable.default_option_border_bg)
         }
     }
 
 
+    private fun handleOptionClick(clickedIndex: Int) {
+        // Tüm seçenekleri varsayılan haline getir
+        resetOptions()
+
+        // Tıklanan seçeneği vurgula
+        optionViews[clickedIndex].background = ContextCompat.getDrawable(this, R.drawable.selected_option_border_bg)
+
+        // ViewModel'a seçimi bildir
+        quizViewModel.selectOption(clickedIndex)
+        btnSubmit?.isEnabled = true
+    }
+
+    private fun resetOptions() {
+        optionViews.forEach { textView ->
+            textView.background = ContextCompat.getDrawable(this, R.drawable.default_option_border_bg)
+        }
+    }
+
+    private fun checkAnswer() {
+        quizViewModel.selectedOption.value?.let { selectedIndex ->
+            val isCorrect = quizViewModel.checkAnswer()
+            highlightAnswer(isCorrect, selectedIndex)
+
+            btnSubmit?.isEnabled = false
+
+            optionViews[0].postDelayed({
+                if (quizViewModel.isQuizFinished()) {
+                    quizViewModel.moveToNextQuestion()
+                } else {
+                    quizViewModel.moveToNextQuestion()
+                }
+            }, 1500)
+        }
+    }
+
+    private fun highlightAnswer(isCorrect: Boolean, selectedIndex: Int) {
+        if (isCorrect) {
+            optionViews[selectedIndex].background = ContextCompat.getDrawable(this, R.drawable.correct_option_border_bg)
+        } else {
+            optionViews[selectedIndex].background = ContextCompat.getDrawable(this, R.drawable.wrong_option_border_bg)
+            quizViewModel.currentQuestion.value?.correctAnswer?.let { correctIndex ->
+                optionViews[correctIndex].background = ContextCompat.getDrawable(this, R.drawable.correct_option_border_bg)
+            }
+        }
+    }
 
 }
+
+
+

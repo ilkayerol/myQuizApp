@@ -1,5 +1,6 @@
 package com.example.myquizapp
 
+// MODEL KATMANI
 data class Question(
     val id: Int,
     val question: String,
